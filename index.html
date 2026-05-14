@@ -1,1 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EagleSync - FTP Licence Manager</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container { max-width: 700px; margin: 0 auto; }
+        .card {
+            background: rgba(30, 35, 55, 0.95);
+            border-radius: 20px;
+            padding: 30px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(0, 210, 255, 0.3);
+        }
+        h1 { color: #00d2ff; font-size: 24px; margin-bottom: 20px; text-align: center; }
+        .input-group { margin-bottom: 20px; }
+        label { display: block; margin-bottom: 8px; color: #8899aa; font-weight: bold; }
+        input, textarea, select {
+            width: 100%;
+            padding: 12px;
+            background: #0a0a15;
+            border: 1px solid #2a2a4a;
+            border-radius: 10px;
+            color: white;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+        textarea { font-family: monospace; resize: vertical; min-height: 150px; }
+        button {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, #00d2ff, #0077ff);
+            border: none;
+            border-radius: 10px;
+            color: white;
+            font-weight: bold;
+            font-size: 16px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        button:hover { transform: translateY(-2px); }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            background: #0a0a15;
+            border-radius: 10px;
+            font-family: monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+        }
+        .success { background: rgba(0,200,100,0.2); border: 1px solid #00c864; color: #00c864; padding: 10px; border-radius: 8px; text-align: center; margin-top: 10px; }
+        .error { background: rgba(255,50,50,0.2); border: 1px solid #ff4444; color: #ff8888; padding: 10px; border-radius: 8px; text-align: center; margin-top: 10px; }
+        .info { background: rgba(0,210,255,0.1); border: 1px solid #00d2ff; color: #00d2ff; padding: 10px; border-radius: 8px; text-align: center; margin-top: 10px; }
+        .mode-selector { display: flex; gap: 10px; margin-bottom: 20px; }
+        .mode-btn { flex: 1; padding: 10px; background: #2a2a4a; border: none; border-radius: 8px; color: white; cursor: pointer; }
+        .mode-btn.active { background: #00d2ff; color: #000; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <h1>🦅 EagleSync FTP Manager</h1>
+            
+            <div class="mode-selector">
+                <button class="mode-btn active" onclick="setMode('upload')">📤 Upload Licence</button>
+                <button class="mode-btn" onclick="setMode('download')">📥 Download Licence</button>
+            </div>
 
+            <div id="uploadPanel">
+                <div class="input-group">
+                    <label>💻 Computer Name</label>
+                    <input type="text" id="computerName" placeholder="e.g., ARGPB026">
+                </div>
+
+                <div class="input-group">
+                    <label>📅 Expiry Date</label>
+                    <input type="date" id="expiryDate">
+                </div>
+
+                <div class="input-group">
+                    <label>🔑 Licence Key</label>
+                    <input type="text" id="licenceKey" placeholder="Auto-generated">
+                    <button type="button" onclick="generateKey()" style="margin-top: 5px; padding: 8px; font-size: 12px;">Generate Key</button>
+                </div>
+
+                <div class="input-group">
+                    <label>✅ Status</label>
+                    <select id="isValid">
+                        <option value="true">Active ✓</option>
+                        <option value="false">Inactive ✗</option>
+                    </select>
+                </div>
+
+                <div class="input-group">
+                    <label>📄 JSON Preview</label>
+                    <textarea id="jsonPreview" readonly></textarea>
+                </div>
+
+                <button onclick="uploadToFTP()">📤 Upload to FTP Server</button>
+            </div>
+
+            <div id="downloadPanel" style="display: none;">
+                <div class="input-group">
+                    <label>💻 Computer Name</label>
+                    <input type="text" id="downloadComputerName" placeholder="e.g., ARGPB026">
+                </div>
+                <button onclick="downloadFromFTP()">📥 Download Licence</button>
+            </div>
+
+            <div id="result" class="result">Ready</div>
+            <div id="status"></div>
+        </div>
+    </div>
+
+    <script>
+        // API Endpoint (you need to deploy this serverless function)
+        const API_URL = 'https://eaglesync-ftp-api.vercel.app/api/ftp'; // Replace with your Vercel URL
+
+        let currentMode = 'upload';
+
+        function setMode(mode) {
+            currentMode = mode;
+            document.getElementById('uploadPanel').style.display = mode === 'upload' ? 'block' : 'none';
+            document.getElementById('downloadPanel').style.display = mode === 'download' ? 'block' : 'none';
+            
+            document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+        }
+
+        function generateKey() {
+            const key = 'EAGLE-' + Math.random().toString(36).substring(2, 15).toUpperCase();
+            document.getElementById('licenceKey').value = key;
+            updatePreview();
+        }
+
+        function updatePreview() {
+            const computerName = document.getElementById('computerName').value;
+            const expiryDate = document.getElementById('expiryDate').value;
+            const licenceKey = document.getElementById('licenceKey').value;
+            const isValid = document.getElementById('isValid').value === 'true';
+
+            if (!computerName || !expiryDate) {
+                document.getElementById('jsonPreview').value = 'Please fill in Computer Name and Expiry Date';
+                return;
+            }
+
+            const licence = {
+                ComputerName: computerName.toUpperCase(),
+                ExpiryDate: expiryDate,
+                LicenceKey: licenceKey || 'EAGLE-' + Math.random().toString(36).substring(2, 15).toUpperCase(),
+                IsValid: isValid,
+                LastUpdated: new Date().toISOString().split('T')[0]
+            };
+
+            document.getElementById('jsonPreview').value = JSON.stringify(licence, null, 2);
+            
+            if (!document.getElementById('licenceKey').value) {
+                document.getElementById('licenceKey').value = licence.LicenceKey;
+            }
+        }
+
+        async function uploadToFTP() {
+            const computerName = document.getElementById('computerName').value;
+            const expiryDate = document.getElementById('expiryDate').value;
+            const licenceKey = document.getElementById('licenceKey').value;
+            const isValid = document.getElementById('isValid').value === 'true';
+
+            if (!computerName || !expiryDate) {
+                showStatus('Please fill in all fields', 'error');
+                return;
+            }
+
+            const licence = {
+                ComputerName: computerName.toUpperCase(),
+                ExpiryDate: expiryDate,
+                LicenceKey: licenceKey,
+                IsValid: isValid,
+                LastUpdated: new Date().toISOString().split('T')[0]
+            };
+
+            showStatus('Uploading to FTP...', 'info');
+            document.getElementById('result').innerHTML = 'Uploading...';
+
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        action: 'upload',
+                        computerName: computerName.toUpperCase(),
+                        licence: licence
+                    })
+                });
+
+                const result = await response.json();
+                
+                if (result.success) {
+                    showStatus(`✅ Licence uploaded successfully for ${computerName}`, 'success');
+                    document.getElementById('result').innerHTML = `✅ Uploaded: ${computerName}.json\n\n${JSON.stringify(licence, null, 2)}`;
+                } else {
+                    showStatus(`❌ Upload failed: ${result.error}`, 'error');
+                }
+            } catch (error) {
+                showStatus(`❌ Connection error: ${error.message}`, 'error');
+            }
+        }
+
+        async function downloadFromFTP() {
+            const computerName = document.getElementById('downloadComputerName').value;
+            
+            if (!computerName) {
+                showStatus('Please enter computer name', 'error');
+                return;
+            }
+
+            showStatus('Downloading from FTP...', 'info');
+            document.getElementById('result').innerHTML = 'Downloading...';
+
+            try {
+                const response = await fetch(`${API_URL}?action=download&computer=${encodeURIComponent(computerName)}`);
+                const result = await response.json();
+                
+                if (result.success) {
+                    showStatus(`✅ Licence downloaded for ${computerName}`, 'success');
+                    document.getElementById('result').innerHTML = `✅ Downloaded: ${computerName}.json\n\n${JSON.stringify(result.licence, null, 2)}`;
+                } else {
+                    showStatus(`❌ Download failed: ${result.error}`, 'error');
+                }
+            } catch (error) {
+                showStatus(`❌ Connection error: ${error.message}`, 'error');
+            }
+        }
+
+        function showStatus(message, type) {
+            const statusDiv = document.getElementById('status');
+            statusDiv.className = type;
+            statusDiv.innerHTML = message;
+            setTimeout(() => {
+                if (statusDiv.innerHTML === message) {
+                    statusDiv.style.opacity = '0';
+                    setTimeout(() => {
+                        statusDiv.innerHTML = '';
+                        statusDiv.style.opacity = '1';
+                    }, 500);
+                }
+            }, 4000);
+        }
+
+        // Set default expiry date (1 year from now)
+        const defaultExpiry = new Date();
+        defaultExpiry.setFullYear(defaultExpiry.getFullYear() + 1);
+        document.getElementById('expiryDate').value = defaultExpiry.toISOString().split('T')[0];
+
+        // Generate default key
+        generateKey();
+
+        // Update preview on changes
+        document.getElementById('computerName').addEventListener('input', updatePreview);
+        document.getElementById('expiryDate').addEventListener('change', updatePreview);
+        document.getElementById('licenceKey').addEventListener('input', updatePreview);
+        document.getElementById('isValid').addEventListener('change', updatePreview);
+    </script>
+</body>
+</html>

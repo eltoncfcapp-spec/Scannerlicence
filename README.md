@@ -1,0 +1,2 @@
+# Scannerlicence
+licence for scanner

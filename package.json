@@ -2,7 +2,5 @@
   "name": "scannerlicence",
   "version": "1.0.0",
   "type": "module",
-  "dependencies": {
-    "basic-ftp": "^5.0.4"
-  }
+  "dependencies": {}
 }

@@ -9,7 +9,7 @@ export default async function handler(req, res) {
     }
 
     // Your PHP bridge URL
-    const BRIDGE_URL = 'https://jmb-electricalsolar.co.za/licence-api.php';
+   const BRIDGE_URL = 'https://licence.jmb-electricalsolar.co.za/licence-api.php';
 
     try {
         if (req.method === 'POST') {

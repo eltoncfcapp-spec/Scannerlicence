@@ -1,64 +1,105 @@
-import { Client } from 'ssh2';
+// EagleSync Licence API - HTTP/HTTPS Version
+// Deployed to Vercel, connects to your PHP script on jmb-electricalsolar.co.za
 
 export default async function handler(req, res) {
+    // Enable CORS for GitHub Pages
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-API-Key');
 
+    // Handle preflight requests
     if (req.method === 'OPTIONS') {
         return res.status(200).end();
     }
 
-    const conn = new Client();
-    
-    const sftpConfig = {
-        host: 'jmb-electricalsolar.co.za',  // Note: no ftp. prefix
-        port: 22,
-        username: 'Scan@jmb-electricalsolar.co.za',
-        password: process.env.FTP_PASSWORD
-    };
+    // Your PHP API endpoint (works on HTTPS port 443 - never blocked)
+    const PHP_API_URL = 'https://jmb-electricalsolar.co.za/licence-api.php';
 
     try {
-        await new Promise((resolve, reject) => {
-            conn.on('ready', resolve);
-            conn.on('error', reject);
-            conn.connect(sftpConfig);
-        });
+        // ============================================================
+        // POST - UPLOAD LICENCE
+        // ============================================================
+        if (req.method === 'POST') {
+            const { computerName, licence } = req.body;
 
-        conn.sftp(async (err, sftp) => {
-            if (err) {
-                return res.status(500).json({ success: false, error: err.message });
-            }
-
-            if (req.method === 'POST') {
-                const { computerName, licence } = req.body;
-                const fileName = `${computerName}.json`;
-                const fileContent = JSON.stringify(licence, null, 2);
-                
-                sftp.writeFile(`/Scan/${fileName}`, fileContent, (err) => {
-                    sftp.end();
-                    conn.end();
-                    if (err) {
-                        return res.status(500).json({ success: false, error: err.message });
-                    }
-                    res.status(200).json({ success: true, message: `Uploaded ${fileName}` });
-                });
-            } else if (req.method === 'GET') {
-                const computerName = req.query.computer;
-                const fileName = `${computerName}.json`;
-                
-                sftp.readFile(`/Scan/${fileName}`, (err, data) => {
-                    sftp.end();
-                    conn.end();
-                    if (err) {
-                        return res.status(500).json({ success: false, error: 'File not found' });
-                    }
-                    const licence = JSON.parse(data.toString());
-                    res.status(200).json({ success: true, licence });
+            if (!computerName || !licence) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Missing computerName or licence data'
                 });
             }
+
+            console.log(`📤 Uploading licence for: ${computerName}`);
+
+            const response = await fetch(PHP_API_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-API-Key': process.env.UPLOAD_API_KEY || 'eaglesync-secret-key-2024'
+                },
+                body: JSON.stringify({
+                    computerName: computerName,
+                    licence: licence
+                })
+            });
+
+            const data = await response.json();
+            return res.status(response.status).json(data);
+        }
+
+        // ============================================================
+        // GET - DOWNLOAD LICENCE
+        // ============================================================
+        if (req.method === 'GET') {
+            const computerName = req.query.computer;
+
+            if (!computerName) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Missing computer name. Use: ?computer=NAME'
+                });
+            }
+
+            console.log(`📥 Downloading licence for: ${computerName}`);
+
+            const response = await fetch(`${PHP_API_URL}?computer=${encodeURIComponent(computerName)}`);
+            
+            if (!response.ok) {
+                return res.status(response.status).json({
+                    success: false,
+                    error: `HTTP ${response.status}`
+                });
+            }
+
+            const data = await response.json();
+            
+            if (data.error) {
+                return res.status(404).json({
+                    success: false,
+                    error: data.error
+                });
+            }
+            
+            return res.status(200).json({
+                success: true,
+                licence: data,
+                message: `Licence downloaded for ${computerName}`
+            });
+        }
+
+        // Method not allowed
+        return res.status(405).json({
+            success: false,
+            error: 'Method not allowed. Use GET or POST.'
         });
+
     } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
+        console.error('API Error:', error);
+        
+        return res.status(500).json({
+            success: false,
+            error: error.message,
+            hint: 'Make sure PHP script is at: https://jmb-electricalsolar.co.za/licence-api.php'
+        });
     }
 }
